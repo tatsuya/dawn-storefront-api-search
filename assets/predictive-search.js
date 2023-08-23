@@ -176,8 +176,43 @@ class PredictiveSearch extends SearchForm {
       return;
     }
 
-    fetch(`${routes.predictive_search_url}?q=${encodeURIComponent(searchTerm)}&section_id=predictive-search`, {
-      signal: this.abortController.signal,
+    fetch("https://tatsuyas-store.myshopify.com/api/2023-07/graphql.json", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Storefront-Access-Token": "PUBLIC_STOREFRONT_API_TOKEN",
+      },
+      body: JSON.stringify({
+        query: `
+          query suggestions($query: String!) {
+            predictiveSearch(query: $query) {
+              queries {
+                text
+                styledText
+              }
+              collections {
+                id
+                title
+              }
+              products {
+                id
+                title
+              }
+              pages {
+                id
+                title
+              }
+              articles {
+                id
+                title
+              }
+            }
+          }
+        `,
+        variables: {
+          query: searchTerm,
+        },
+      }),
     })
       .then((response) => {
         if (!response.ok) {
@@ -185,17 +220,21 @@ class PredictiveSearch extends SearchForm {
           this.close();
           throw error;
         }
-
-        return response.text();
+        return response.json();
       })
-      .then((text) => {
-        const resultsMarkup = new DOMParser()
-          .parseFromString(text, 'text/html')
-          .querySelector('#shopify-section-predictive-search').innerHTML;
-        // Save bandwidth keeping the cache in all instances synced
-        this.allPredictiveSearchInstances.forEach((predictiveSearchInstance) => {
-          predictiveSearchInstance.cachedResults[queryKey] = resultsMarkup;
-        });
+      .then((data) => {
+        // Adding dummy [data-predictive-search-live-region-count-value] to make setLiveRegionResults() work
+        const resultsMarkup = `
+          <div>${JSON.stringify(data)}</div>
+          <span class="hidden" data-predictive-search-live-region-count-value="">
+            10 results: 7 suggestions, 3 products
+          </span>
+        `;
+        this.allPredictiveSearchInstances.forEach(
+          (predictiveSearchInstance) => {
+            predictiveSearchInstance.cachedResults[queryKey] = resultsMarkup;
+          }
+        );
         this.renderSearchResults(resultsMarkup);
       })
       .catch((error) => {
